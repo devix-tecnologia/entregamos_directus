@@ -1,51 +1,75 @@
-version: "3"
 services:
-  database:
-    image: postgis/postgis:13-master
-    # Required when running on platform other than amd64, like Apple M1/M2:
-    # platform: linux/amd64
+
+  entregamos_postgres:
+    image: postgres:14-alpine
+    restart: unless-stopped
     volumes:
-      - ./data/database:/var/lib/postgresql/data
+      - db_data:/var/lib/postgresql/data
     environment:
-      POSTGRES_USER: "directus"
-      POSTGRES_PASSWORD: "directus"
-      POSTGRES_DB: "directus"
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: entregamos-homologacao
+    networks:
+      entregamos_network:
+        ipv4_address: 172.27.15.2
+    ports:
+      - "5432:5432"
+    command: ["postgres", "-c", "log_statement=all"]
 
-  cache:
-    image: redis:6
+  entregamos_pgadmin4:
+    image: dpage/pgadmin4:8.5
+    environment:
+      - PGADMIN_DEFAULT_PASSWORD=password
+      - PGADMIN_DEFAULT_EMAIL=dev@devix.co
+      - PGADMIN_LISTEN_ADDRESS=0.0.0.0
+    volumes:
+      - pgadmin4_data:/var/lib/pgadmin
+    restart: unless-stopped
+    hostname: entregamos_postgres
+    depends_on:
+      - entregamos_postgres
+    networks:
+      entregamos_network:
+        ipv4_address: 172.27.15.6
 
-  directus:
+  entregamos_directus:
     image: directus/directus:10.13.1
     ports:
-      - 8055:8055
-    volumes:
-      - ./uploads:/directus/uploads
-      - ./extensions:/directus/extensions
+      - "8055:8055"
     depends_on:
-      - cache
-      - database
+      - entregamos_postgres
+      - entregamos_redis
     environment:
-      SECRET: "replace-with-secure-random-value"
-
+      SECRET: "6c0b2c12-3378-4249-9983-ba4da374f9d9"
       DB_CLIENT: "pg"
-      DB_HOST: "database"
+      DB_HOST: "172.27.15.2"
       DB_PORT: "5432"
-      DB_DATABASE: "directus"
-      DB_USER: "directus"
-      DB_PASSWORD: "directus"
-
-      CACHE_ENABLED: "true"
+      DB_DATABASE: "entregamos-homologacao"
+      DB_USER: "postgres"
+      DB_PASSWORD: "password"
+      CACHE_ENABLED: "false"
       CACHE_AUTO_PURGE: "true"
       CACHE_STORE: "redis"
-      REDIS: "redis://cache:6379"
-
+      REDIS: "redis://172.27.15.8:6379"
       ADMIN_EMAIL: "admin@example.com"
       ADMIN_PASSWORD: "d1r3ctu5"
+      PUBLIC_URL: "http://locahost:8055"
+    networks:
+      entregamos_network:
 
-      # Make sure to set this in production
-      # (see https://docs.directus.io/self-hosted/config-options#general)
-      # PUBLIC_URL: "https://directus.example.com"
+  entregamos_redis:
+    image: redis:6
+    ports:
+      - "6379:6379"
+    networks:
+      entregamos_network:
+        ipv4_address: 172.27.15.8
 
-    # Environment variables can also be defined in a file (for example `.env`):
-    # env_file:
-    #	  - .env
+networks:
+  entregamos_network:
+    ipam:
+      config:
+        - subnet: 172.27.15.0/24
+
+volumes:
+  db_data:
+  pgadmin4_data:
